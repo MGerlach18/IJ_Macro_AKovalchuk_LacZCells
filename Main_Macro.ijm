@@ -6,6 +6,7 @@
 //getting input parameters
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
+#@ Float (label = "Advanced: Distance Nuclei-LacZ", style = "slider", min=0.1, max=4, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
@@ -54,64 +55,49 @@ function processFolder(input) {
 	}
 }
 
-//function to semiautomatically annotate ROIs in images  
+//function to open and process Images  
 function processFile(input, output, file) {
-//Import
-run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_1");
+//BioFormat extension to find the number of positions in a file
+Ext.setId(input + File.separator + list[i]);
+Ext.getSeriesCount(seriesCount);
+
+for (series = 1; series <= seriesCount; series++) {
+run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series");
 title=getTitle();
+run("Split Channels");
 
-//check whether the presegmentation for this file already exists
-if (File.exists(output + "\\ROIS\\" + title  +".zip")) {
-	close("*");
-} else {
-
-run("RGB Color");
-run("16-bit");
-
-run("Top Hat...", "radius=7 light");
-
-setAutoThreshold("Triangle dark");
-setOption("BlackBackground", true);
-run("Convert to Mask");
-
-run("Remove Outliers...", "radius=3 threshold=50 which=Dark");
-
-run("Analyze Particles...", "size=30.00-Infinity circularity=0.30-1.00 exclude include add");
-
-selectWindow(title);
-close("\\Others");
-
-//Manual check and addition of detected ROIs
-
-roiManager("Show All");
-setTool("freehand");
-waitForUser("Manual correction", "Please delete invalid ROIs [DEL] and manually add undetected regions via [T]. When finished, click [OK]");
-
+/*
+ * Segment LacZ Signal
+ * create psrticles with presettings
+ * create mask from selection
+ * Distance map
+ */
+ 
+ /*
+  * Segment DAPI channel
+  * dectect particles to ROI manager
+  * Lopp ROI --> Distance to LacZ signal
+  * counter for nuclei, classes
+  * report to result table
+  * Save ROIS
+  */
 roiManager("Save", output + "\\ROIS\\" + title + ".zip");
 roiManager("Deselect");
 roiManager("Delete");
-}
-}
 
-//function opens all ROIS, measures the crossection area and includes them into one .csv-File
-
-function measureFile(input, output, file) {
-run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_1");
-title=getTitle();
-
-roiManager("Open", output + "\\ROIS\\" + title + ".zip");
-selectWindow("Summary_Total");
-a=getValue("results.count");
-
-roiManager("Measure");
-
-selectWindow("Results");
 selectWindow("Summary_Total");
 for (o = 0; o < count; o++) {
 Table.set("Name", o+a, title);
 Table.set("ROI #", o+a, o);
 Table.set("Area [µm²]", o+a, getResult("Area", o));
 }
+
+}
+
+
+
+
+
 
 close("Results");
 roiManager("Deselect");
