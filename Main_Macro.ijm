@@ -37,7 +37,7 @@ processFolder(input);
 
 //save Results as .csv-file and clean up
 selectWindow("Summary_Total");
-saveAs("Results", output + "\\Results\\Results.csv");
+saveAs("Results", output + "\\Results\\Results_" + distance + "µm.csv");
 close("*");
 print("Batch processing completed");
 
@@ -54,7 +54,7 @@ function processFolder(input) {
 		if(File.isDirectory(input + File.separator + list[i]))
 			processFolder(input + File.separator + list[i]);
 		if(endsWith(list[i], ".czi"))
-			measureFile(input, output, list[i]);
+			processFile(input, output, list[i]);
 	}
 }
 
@@ -64,18 +64,18 @@ function processFile(input, output, file) {
 Ext.setId(input + File.separator + list[i]);
 Ext.getSeriesCount(seriesCount);
 
-//Process als postions in a file
-for (series = 0; series < seriesCount; series++) {
+
+//Process all postions in a file
+for (series = 1; series < seriesCount; series++) {
 //Detect Well Postion and Position number in .CZI file metadata
-Ext.setSeries(series);
-Ext.getSeriesMetadataValue("Series " + series + " Name", SeriesName);
-A=split(SeriesName);
+SeriesName=IJ.pad(series, 2);
 
-Ext.getSeriesMetadataValue("Information|Image|S|Scene|ArrayName " + A[1], Well);
-Ext.getSeriesMetadataValue("Information|Image|S|Scene|Name " + A[1], number);
+Ext.getSeriesMetadataValue("Information|Image|S|Scene|ArrayName #" + SeriesName, Well);
+Ext.getSeriesMetadataValue("Information|Image|S|Scene|Name #" + SeriesName, number);
 
-run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series");
+run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series);
 title=getTitle();
+getPixelSize(unit, pixelWidth, pixelHeight);
 
 //Splitting channels
 run("Split Channels");
@@ -90,8 +90,8 @@ run("Convert to Mask");
 run("Analyze Particles...", "size=20-Infinity show=Masks include");
 run("Invert");
 run("Chamfer Distance Map", "distances=[Quasi-Euclidean (1,1.41)] output=[32 bits] normalize");
-ID=getImageID();
- 
+rename("DistanceMap");
+
 //Processing Hoechst Fluorescence channel to detect nuclei 
 selectWindow("C2-" + title);
 run("Gaussian Blur...", "sigma=3");
@@ -101,7 +101,8 @@ run("Analyze Particles...", "  show=Nothing exclude include add");
 close();
  
 //Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
-selectImage(ID);
+selectWindow("DistanceMap");
+roiManager("deselect");
 roiManager("measure");
 positive=0;
 negative=0;
@@ -117,21 +118,24 @@ for (a = 0; a < n; a++) {
     	negative=negative+1;
     	RoiManager.setGroup(2);	
     }
-
-//creating entry to results table - one line per position
-run("Clear Results");
-selectWindow("Summary_Total");
-Table.set("Plate Name", i+series, list[i]);
-Table.set("Plate well", i+series, Well);
-Table.set("Position number", i+series, number);
-Table.set("Positive nuclei", i+series, positive);
-Table.set("Negative nuclei", i+series, negative);
-Table.set("% Pos", i+series, positive/(positive+negative)*100);
+  
 }
+  run("Clear Results");
+//creating entry to results table - one line per position
 
-//cleaning up workspace for next series
+selectWindow("Summary_Total");
+Table.set("Plate Name", i+series-1, list[i]);
+Table.set("Plate well", i+series-1, Well);
+Table.set("Position number", i+series-1, number);
+Table.set("Positive nuclei", i+series-1, positive);
+Table.set("Negative nuclei", i+series-1, negative);
+Table.set("% Pos", i+series-1, positive/(positive+negative)*100);
+
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
 }
+
+//cleaning up workspace for next series
+
 }
