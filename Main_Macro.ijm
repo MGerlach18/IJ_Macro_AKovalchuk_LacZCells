@@ -1,6 +1,11 @@
 /*
  * Macro to processWF Images of DAPI/LacZ staines cells from ApoTome
  * Automatic classification and quantification of nuclei
+ * Requires: 
+ * ImageJ version
+ * MorphoLibJ
+ * BioFormats Extension
+ * CC-BY 4.0 by Michael Gerlach, TU Dresden
  */
 
 //getting input parameters
@@ -12,7 +17,7 @@
 //Preparing Stage
 run("Bio-Formats Macro Extensions");
 setOption("BlackBackground", true);
-run("Set Measurements...", "area min redirect=None decimal=0");
+run("Set Measurements...", "min redirect=None decimal=0")
 print("\\Clear");
 run("Clear Results");
 close("*");
@@ -65,42 +70,50 @@ for (series = 1; series <= seriesCount; series++) {
 run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series");
 title=getTitle();
 run("Split Channels");
-
-/*
- * Segment LacZ Signal
- * create psrticles with presettings
- * create mask from selection
- * Distance map
- */
+selectWindow("C1-" + title);
+run("Subtract Background...", "rolling=100");
+run("Gaussian Blur...", "sigma=3");
+setAutoThreshold("Intermodes dark");
+run("Convert to Mask");
+run("Analyze Particles...", "size=20-Infinity show=Masks include");
+run("Invert");
+run("Chamfer Distance Map", "distances=[Quasi-Euclidean (1,1.41)] output=[32 bits] normalize");
+ID=getImageID();
  
- /*
-  * Segment DAPI channel
-  * dectect particles to ROI manager
-  * Lopp ROI --> Distance to LacZ signal
-  * counter for nuclei, classes
-  * report to result table
-  * Save ROIS
-  */
-roiManager("Save", output + "\\ROIS\\" + title + ".zip");
-roiManager("Deselect");
-roiManager("Delete");
-
+ 
+selectWindow("C2-" + title);
+run("Gaussian Blur...", "sigma=3");
+setAutoThreshold("Default dark");
+run("Convert to Mask");
+run("Analyze Particles...", "  show=Nothing exclude include add");
+close();
+ 
+selectImage(ID);
+n = roiManager('count');
+roiManager("measure");
+positive=0;
+negative=0;
+for (a = 0; a < n; a++) {
+    roiManager('select', a);
+    m=getResult("Min", a);
+    if (m < (distance*pixelWidth)) {
+    	positive=positive+1;	
+    	RoiManager.setGroup(1);
+    }
+    else{
+    	negative=negative+1;
+    	RoiManager.setGroup(2);	
+    }
+    
+run("Clear Results");
 selectWindow("Summary_Total");
-for (o = 0; o < count; o++) {
-Table.set("Name", o+a, title);
-Table.set("ROI #", o+a, o);
-Table.set("Area [µm²]", o+a, getResult("Area", o));
+Table.set("Name", i+series, title);
+Table.set("Positive nuclei", i+series, positive);
+Table.set("Negative nuclei", i+series, negative);
+Table.set("% Pos", i+series, positive/(positive+negative)*100);
 }
-
-}
-
-
-
-
-
-
-close("Results");
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
+}
 }
