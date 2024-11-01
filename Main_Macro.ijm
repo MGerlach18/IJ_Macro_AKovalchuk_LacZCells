@@ -31,6 +31,8 @@ roiManager("Delete");
 File.makeDirectory(output + "\\ROIS");
 File.makeDirectory(output + "\\Results");
 
+line=0;
+
 //measuring the folder and creating results table
 Table.create("Summary_Total");
 processFolder(input);
@@ -124,20 +126,25 @@ for (a = 0; a < n; a++) {
 //creating entry to results table - one line per position
 
 selectWindow("Summary_Total");
-Table.set("Plate Name", i+series-1, list[i]);
-Table.set("Plate well", i+series-1, Well);
-Table.set("Position number", i+series-1, number);
-Table.set("Positive nuclei", i+series-1, positive);
-Table.set("Negative nuclei", i+series-1, negative);
-Table.set("% Pos", i+series-1, positive/(positive+negative)*100);
+Table.set("Plate Name", line, list[i]);
+Table.set("Plate well", line, Well);
+Table.set("Position number", line, number);
+Table.set("Positive nuclei", line, positive);
+Table.set("Negative nuclei", line, negative);
+Table.set("% Pos", line, positive/(positive+negative)*100);
 Table.update;
+line=line+1;
+print(line);
 
 roiManager("save", output + File.separator + "ROIS" + File.separator + list[i]+"_"+SeriesName+".zip");
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
 }
-
+return line;
 //cleaning up workspace for next series
 
 }
+
+
+
