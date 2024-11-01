@@ -11,7 +11,7 @@
 //getting input parameters
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
-#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0.1, max=4, stepSize=0.1, value=1) distance
+#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=5, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
@@ -21,7 +21,7 @@ run("Set Measurements...", "min redirect=None decimal=0")
 print("\\Clear");
 run("Clear Results");
 close("*");
-setBatchMode(false);
+setBatchMode(true);
 
 if (roiManager("count")>0) {
 roiManager("Deselect");
@@ -66,12 +66,12 @@ Ext.getSeriesCount(seriesCount);
 
 
 //Process all postions in a file
-for (series = 1; series < seriesCount; series++) {
+for (series = 1; series <= seriesCount; series++) {
 //Detect Well Postion and Position number in .CZI file metadata
 SeriesName=IJ.pad(series, 2);
 
-Ext.getSeriesMetadataValue("Information|Image|S|Scene|ArrayName #" + SeriesName, Well);
-Ext.getSeriesMetadataValue("Information|Image|S|Scene|Name #" + SeriesName, number);
+Ext.getMetadataValue("Information|Image|S|Scene|ArrayName #" + SeriesName, Well);
+Ext.getMetadataValue("Information|Image|S|Scene|Name #" + SeriesName, number);
 
 run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series);
 title=getTitle();
@@ -110,7 +110,7 @@ n = roiManager('count');
 for (a = 0; a < n; a++) {
     roiManager('select', a);
     m=getResult("Min", a);
-    if (m < (distance*pixelWidth)) {
+    if (m <= (distance/pixelWidth)) {
     	positive=positive+1;	
     	RoiManager.setGroup(1);
     }
@@ -130,7 +130,9 @@ Table.set("Position number", i+series-1, number);
 Table.set("Positive nuclei", i+series-1, positive);
 Table.set("Negative nuclei", i+series-1, negative);
 Table.set("% Pos", i+series-1, positive/(positive+negative)*100);
+Table.update;
 
+roiManager("save", output + File.separator + "ROIS" + File.separator + list[i]+"_"+SeriesName+".zip");
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
