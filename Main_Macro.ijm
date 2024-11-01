@@ -2,7 +2,7 @@
  * Macro to processWF Images of DAPI/LacZ staines cells from ApoTome
  * Automatic classification and quantification of nuclei
  * Requires: 
- * ImageJ version
+ * ImageJ version 1.54f
  * MorphoLibJ
  * BioFormats Extension
  * CC-BY 4.0 by Michael Gerlach, TU Dresden
@@ -11,7 +11,7 @@
 //getting input parameters
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
-#@ Float (label = "Advanced: Distance Nuclei-LacZ", style = "slider", min=0.1, max=4, stepSize=0.1, value=1) distance
+#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0.1, max=4, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
@@ -44,8 +44,6 @@ print("Batch processing completed");
 //End of Macro
 
 
-
-
 //Definition of functions below
 
 // functions to scan folders/subfolders/files to find files with correct suffix and do the (pre-)processing
@@ -62,14 +60,28 @@ function processFolder(input) {
 
 //function to open and process Images  
 function processFile(input, output, file) {
-//BioFormat extension to find the number of positions in a file
+//BioFormat extension to find the number of positions in a file and detect the Well/position Number
 Ext.setId(input + File.separator + list[i]);
 Ext.getSeriesCount(seriesCount);
 
-for (series = 1; series <= seriesCount; series++) {
+//Process als postions in a file
+for (series = 0; series < seriesCount; series++) {
+//Detect Well Postion and Position number in .CZI file metadata
+Ext.setSeries(series);
+Ext.getSeriesMetadataValue("Series " + series + " Name", SeriesName);
+A=split(SeriesName);
+
+Ext.getSeriesMetadataValue("Information|Image|S|Scene|ArrayName " + A[1], Well);
+Ext.getSeriesMetadataValue("Information|Image|S|Scene|Name " + A[1], number);
+
 run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series");
 title=getTitle();
+
+//Splitting channels
 run("Split Channels");
+close("C3-" + title);
+
+//Processing LacZ Fluorescence channel to detect LacZ patches
 selectWindow("C1-" + title);
 run("Subtract Background...", "rolling=100");
 run("Gaussian Blur...", "sigma=3");
@@ -80,7 +92,7 @@ run("Invert");
 run("Chamfer Distance Map", "distances=[Quasi-Euclidean (1,1.41)] output=[32 bits] normalize");
 ID=getImageID();
  
- 
+//Processing Hoechst Fluorescence channel to detect nuclei 
 selectWindow("C2-" + title);
 run("Gaussian Blur...", "sigma=3");
 setAutoThreshold("Default dark");
@@ -88,11 +100,12 @@ run("Convert to Mask");
 run("Analyze Particles...", "  show=Nothing exclude include add");
 close();
  
+//Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
 selectImage(ID);
-n = roiManager('count');
 roiManager("measure");
 positive=0;
 negative=0;
+n = roiManager('count');
 for (a = 0; a < n; a++) {
     roiManager('select', a);
     m=getResult("Min", a);
@@ -104,14 +117,19 @@ for (a = 0; a < n; a++) {
     	negative=negative+1;
     	RoiManager.setGroup(2);	
     }
-    
+
+//creating entry to results table - one line per position
 run("Clear Results");
 selectWindow("Summary_Total");
-Table.set("Name", i+series, title);
+Table.set("Plate Name", i+series, list[i]);
+Table.set("Plate well", i+series, Well);
+Table.set("Position number", i+series, number);
 Table.set("Positive nuclei", i+series, positive);
 Table.set("Negative nuclei", i+series, negative);
 Table.set("% Pos", i+series, positive/(positive+negative)*100);
 }
+
+//cleaning up workspace for next series
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
