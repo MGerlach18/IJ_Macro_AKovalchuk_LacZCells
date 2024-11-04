@@ -35,18 +35,19 @@ File.makeDirectory(output + "\\Results");
 var line=0;
 
 //variables for Metadata
-var plate 
-var well
-var position
+var plate = newArray();
+var well = newArray();
+var position = newArray();
 
-//measuring the folder and creating results table
+//creating results table
 Table.create("Summary_Total");
-//function to create cumulated stack from all files in the input folder
+
+//create cumulated stack from all files in the input folder
 processFolder(input);
 
 //Processing the cumulated stack
 selectWindow("ExperimentStack");
-stack.getDimensions(width, height, channels, slices, frames);
+getDimensions(width, height, channels, slices, frames);
 getPixelSize(unit, pixelWidth, pixelHeight);
 
 //Splitting channels
@@ -54,22 +55,25 @@ run("Split Channels");
 //close("C3-" + title);
 
 //Processing LacZ Fluorescence channel to detect LacZ patches
-selectWindow("C1-" + title);
-run("Subtract Background...", "rolling=100");
-run("Gaussian Blur...", "sigma=3");
-setAutoThreshold("Intermodes dark stack");
-run("Convert to Mask", "method=Intermodes background=Dark calculate black");
+selectWindow("C1-ExperimentStack");
+run("Subtract Background...", "rolling=100 stack");
+run("Gaussian Blur...", "sigma=3 stack");
+setAutoThreshold("Moments dark no-reset stack");
+run("Convert to Mask", "method=Moments background=Dark black list");
 run("Analyze Particles...", "size=20-Infinity show=Masks include stack");
-run("Invert", "stack");
+selectWindow("Mask of C1-ExperimentStack-1");
+//run("Invert", "stack");
 run("Distance Map", "stack");
 rename("DistanceMap");
 
 //Processing Hoechst Fluorescence channel to detect nuclei 
-selectWindow("C2-" + title);
-run("Gaussian Blur...", "sigma=3");
-setAutoThreshold("Default dark");
-run("Convert to Mask");
-run("Analyze Particles...", "  show=Nothing exclude include add");
+selectWindow("C2-ExperimentStack-1");
+run("Gaussian Blur...", "sigma=3 stack");
+setAutoThreshold("Moments dark no-reset stack");
+run("Convert to Mask", "method=Default background=Dark black");
+run("Watershed", "stack");
+run("Analyze Particles...", "  show=Nothing exclude include add stack");
+RoiManager.associateROIsWithSlices(true);
 close();
  
 //Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
@@ -90,7 +94,7 @@ for (a = 0; a < n; a++) {
     	negative=negative+1;
     	RoiManager.setGroup(2);	
     }
-  
+  sele
 }
   run("Clear Results");
 //creating entry to results table - one line per position
@@ -112,7 +116,42 @@ close("*");
 
 
 
-for (u = 0; i < slices; u++) {
+for (u = 0; u < line; u++) {
+	positive=0;
+	negative=0;
+	n = roiManager('count');
+	for (x = 0; x < n; x++) {
+   	 roiManager('select', x);
+   	 RoiName=Roi.getName;
+   	 RoiSlice=split(string, "-");
+   	 if (RoiSlice[0]==IJ.pad(line, 4);) {
+   	 	run("Measure");
+   	 	m=getResult("Min", 0);
+   	 	if (m <= (distance/pixelWidth)) {
+    	positive=positive+1;	
+    	RoiManager.setGroup(1);
+   		 }
+   		 else{
+    			negative=negative+1;
+    			RoiManager.setGroup(2);	
+    		}
+   	 }
+	}
+   	selectWindow("Summary_Total");
+	Table.set("Plate Name", line, plate[line]);
+	Table.set("Plate well", line, well[line]);
+	Table.set("Position number", line, position[line]);
+	Table.set("Positive nuclei", line, positive);
+	Table.set("Negative nuclei", line, negative);
+	Table.set("% Pos", line, positive/(positive+negative)*100);
+	Table.update;
+	selectWindow("name");
+	
+	
+   	}
+
+
+
 
 
 //save Results as .csv-file and clean up
@@ -159,11 +198,11 @@ position[line]=number;
 run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series);
 title=getTitle();
 
-if {line==0}{
+if (line==0){
 	rename("ExperimentStack");
 	line=line+1;
 } else {
-	run("Concatenate...", " title=ExperimentStack open image1=ExperimentStack image2=" + title);
+	run("Concatenate...", " title=ExperimentStack open image1=ExperimentStack image2=[" + title + "]");
 	line=line+1;
 }
 
