@@ -139,7 +139,7 @@ saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance +
 
 print("Batch processing completed");
 time2=getTime();
-print("Processing took " + (time2-time1) + " milliseconds");
+print("Processing took " + (time2-time1)/1000 + " seconds");
 
 //End of Macro
 
