@@ -7,18 +7,20 @@
  * BioFormats Extension
  * CC-BY 4.0 by Michael Gerlach, TU Dresden
  */
-
+time1=getTime();
 //getting input parameters
+#@ String (label = "Experiment Name", style = "text field", value="Experiment 1") experiment
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
 #@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=5, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
+print("\\Clear");
+print("Started Batch Processing for " + experiment);
 run("Bio-Formats Macro Extensions");
 setOption("BlackBackground", true);
 run("Set Measurements...", "min redirect=None decimal=0")
-print("\\Clear");
 run("Clear Results");
 close("*");
 setBatchMode(true);
@@ -27,12 +29,12 @@ if (roiManager("count")>0) {
 roiManager("Deselect");
 roiManager("Delete");
 }
-
 File.makeDirectory(output + "\\ROIS");
 File.makeDirectory(output + "\\Results");
 
 //Variable for internal counting
 var line=0;
+var nrPlates=0;
 
 //variables for Metadata
 var plate = newArray();
@@ -43,8 +45,12 @@ var position = newArray();
 Table.create("Summary_Total");
 
 //create cumulated stack from all files in the input folder
-processFolder(input);
 
+print("Aggregating Files");
+processFolder(input);
+print("Finished Aggregating Files for " + experiment + ". Found " + lengthOf(position) + " positions in " + nrPlates + " plates ");
+
+print("Processing");
 //Processing the cumulated stack
 selectWindow("ExperimentStack");
 getDimensions(width, height, channels, slices, frames);
@@ -77,6 +83,7 @@ RoiManager.associateROIsWithSlices(true);
 close();
  
 //Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
+print("Start classification of Nuclei");
 selectWindow("DistanceMap");
 roiManager("measure");
 
@@ -111,15 +118,16 @@ for (u = 1; u <= line; u++) {
 	Table.update;
    	}
 
+print("Classification of nuclei finished");
 //SavingRoiSet
-roiManager("save", output + File.separator + "ROIS" + File.separator + "ROI_Set.zip");
+roiManager("save", output + File.separator + "ROIS" + File.separator + experiment + "ROI_Set.zip");
 
 //Creating Control Previews
 selectWindow("C3-ExperimentStack");
 run("Enhance Contrast", "saturated=0.35");
 roiManager("Show All");
 run("Flatten", "stack");
-saveAs("Tiff", output + File.separator + "Results\\Control_Stack.tif");
+saveAs("Tiff", output + File.separator + "Results\\" + experiment + "Control_Stack.tif");
 
 roiManager("Deselect");
 roiManager("Delete");
@@ -127,9 +135,11 @@ close("*");
 
 //save Results as .csv-file and clean up
 selectWindow("Summary_Total");
-saveAs("Results", output + "\\Results\\Results_" + distance + "µm.csv");
+saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance + "µm.csv");
 
 print("Batch processing completed");
+time2=getTime();
+print("Processing took " + (time2-time1) + " milliseconds");
 
 //End of Macro
 
@@ -145,6 +155,7 @@ function processFolder(input) {
 			processFolder(input + File.separator + list[i]);
 		if(endsWith(list[i], ".czi"))
 			processFile(input, output, list[i]);
+			nrPlates=nrPlates+1;
 	}
 }
 
@@ -159,7 +170,7 @@ Ext.getSeriesCount(seriesCount);
 for (series = 1; series <= seriesCount; series++) {
 //Detect Well Postion and Position number in .CZI file metadata
 SeriesName=IJ.pad(series, 2);
-plate[line]=SeriesName;
+plate[line]=list[i];
 
 Ext.getMetadataValue("Information|Image|S|Scene|ArrayName #" + SeriesName, Well);
 well[line]=Well;
