@@ -21,7 +21,7 @@ run("Set Measurements...", "min redirect=None decimal=0")
 print("\\Clear");
 run("Clear Results");
 close("*");
-setBatchMode(false);
+setBatchMode(true);
 
 if (roiManager("count")>0) {
 roiManager("Deselect");
@@ -30,7 +30,6 @@ roiManager("Delete");
 
 File.makeDirectory(output + "\\ROIS");
 File.makeDirectory(output + "\\Results");
-File.makeDirectory(output + "\\Results\\Controls");
 
 //Variable for internal counting
 var line=0;
@@ -78,17 +77,19 @@ RoiManager.associateROIsWithSlices(true);
 close();
  
 //Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
+selectWindow("DistanceMap");
+roiManager("measure");
+
 for (u = 1; u <= line; u++) {
 	positive=0;
 	negative=0;
-	n = roiManager('count');
+	n = roiManager("count");
 	for (x = 0; x < n; x++) {
-   	 roiManager('select', x);
+   	 roiManager("select", x);
    	 RoiName=Roi.getName;
    	 RoiSlice=split(RoiName, "-");
    	 if (RoiSlice[0]==IJ.pad(u, 4)) {
-   	 	run("Measure");
-   	 	m=getResult("Min", 0);
+   	 	m=getResult("Min", x);
    	 	if (m <= (distance/pixelWidth)) {
     	positive=positive+1;	
     	RoiManager.setGroup(1);
@@ -114,11 +115,11 @@ for (u = 1; u <= line; u++) {
 roiManager("save", output + File.separator + "ROIS" + File.separator + "ROI_Set.zip");
 
 //Creating Control Previews
-selectWindow("C2-ExperimentStack");
+selectWindow("C3-ExperimentStack");
 run("Enhance Contrast", "saturated=0.35");
 roiManager("Show All");
 run("Flatten", "stack");
-run("Image Sequence... ", output + File.separator + "Controls\\ format=JPEG name=Control_"+distance+" use");
+saveAs("Tiff", output + File.separator + "Results\\Control_Stack.tif");
 
 roiManager("Deselect");
 roiManager("Delete");
@@ -127,7 +128,6 @@ close("*");
 //save Results as .csv-file and clean up
 selectWindow("Summary_Total");
 saveAs("Results", output + "\\Results\\Results_" + distance + "µm.csv");
-close("*");
 
 print("Batch processing completed");
 
