@@ -12,7 +12,8 @@ time1=getTime();
 #@ String (label = "Experiment Name", style = "text field", value="Experiment 1") experiment
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
-#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=5, stepSize=0.1, value=1) distance
+#@ Boolean (label= "Compute Tresholds on whole Experiment", value=true) T
+#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=2, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
@@ -64,7 +65,11 @@ run("Split Channels");
 selectWindow("C1-ExperimentStack");
 run("Subtract Background...", "rolling=100 stack");
 run("Gaussian Blur...", "sigma=3 stack");
+if (T==true) {
 setAutoThreshold("Moments dark no-reset stack");
+} else {
+setAutoThreshold("Moments dark no-reset");
+}
 run("Convert to Mask", "method=Moments background=Dark black list");
 run("Analyze Particles...", "size=20-Infinity show=Masks include stack");
 selectWindow("Mask of C1-ExperimentStack");
@@ -75,7 +80,11 @@ rename("DistanceMap");
 //Processing Hoechst Fluorescence channel to detect nuclei 
 selectWindow("C2-ExperimentStack");
 run("Gaussian Blur...", "sigma=3 stack");
+if (T==true) {
 setAutoThreshold("Moments dark no-reset stack");
+} else {
+setAutoThreshold("Moments dark no-reset");
+}
 run("Convert to Mask", "method=Default background=Dark black");
 run("Watershed", "stack");
 run("Analyze Particles...", "  show=Nothing exclude include add stack");
@@ -127,16 +136,22 @@ selectWindow("C3-ExperimentStack");
 run("Enhance Contrast", "saturated=0.35");
 roiManager("Show All");
 run("Flatten", "stack");
-saveAs("Tiff", output + File.separator + "Results\\" + experiment + "Control_Stack.tif");
-
+if (T==true) {
+saveAs("Tiff", output + File.separator + "Results\\" + experiment + distance + "µm_VisualControl_Stack.tif");
+} else {
+saveAs("Tiff", output + File.separator + "Results\\" + experiment + distance + "µm_VisualControl.tif");
+}
 roiManager("Deselect");
 roiManager("Delete");
 close("*");
 
 //save Results as .csv-file and clean up
 selectWindow("Summary_Total");
+if (T==true) {
+saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance + "µm_stack.csv");
+} else {
 saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance + "µm.csv");
-
+}
 print("Batch processing completed");
 time2=getTime();
 print("Processing took " + (time2-time1)/1000 + " seconds");
