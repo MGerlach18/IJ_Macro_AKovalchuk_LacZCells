@@ -7,18 +7,21 @@
  * BioFormats Extension
  * CC-BY 4.0 by Michael Gerlach, TU Dresden
  */
-
+time1=getTime();
 //getting input parameters
+#@ String (label = "Experiment Name", style = "text field", value="Experiment 1") experiment
 #@ File (label = "Input directory", style = "directory") input
 #@ File (label = "Output directory", style = "directory") output
-#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=5, stepSize=0.1, value=1) distance
+#@ Boolean (label= "Compute Tresholds on whole Experiment", value=true) T
+#@ Float (label = "Advanced: Distance Nuclei-LacZ [µm]", style = "slider", min=0, max=2, stepSize=0.1, value=1) distance
 
 
 //Preparing Stage
+print("\\Clear");
+print("Started Batch Processing for " + experiment);
 run("Bio-Formats Macro Extensions");
 setOption("BlackBackground", true);
 run("Set Measurements...", "min redirect=None decimal=0")
-print("\\Clear");
 run("Clear Results");
 close("*");
 setBatchMode(true);
@@ -27,21 +30,131 @@ if (roiManager("count")>0) {
 roiManager("Deselect");
 roiManager("Delete");
 }
-
 File.makeDirectory(output + "\\ROIS");
 File.makeDirectory(output + "\\Results");
 
+//Variable for internal counting
 var line=0;
+var nrPlates=0;
 
-//measuring the folder and creating results table
+//variables for Metadata
+var plate = newArray();
+var well = newArray();
+var position = newArray();
+
+//creating results table
 Table.create("Summary_Total");
+
+//create cumulated stack from all files in the input folder
+
+print("Aggregating Files");
 processFolder(input);
+print("Finished Aggregating Files for " + experiment + ". Found " + lengthOf(position) + " positions in " + nrPlates + " plates ");
+
+print("Processing");
+//Processing the cumulated stack
+selectWindow("ExperimentStack");
+getDimensions(width, height, channels, slices, frames);
+getPixelSize(unit, pixelWidth, pixelHeight);
+
+//Splitting channels
+run("Split Channels");
+//close("C3-" + title);
+
+//Processing LacZ Fluorescence channel to detect LacZ patches
+selectWindow("C1-ExperimentStack");
+run("Subtract Background...", "rolling=100 stack");
+run("Gaussian Blur...", "sigma=3 stack");
+if (T==true) {
+setAutoThreshold("Moments dark no-reset stack");
+} else {
+setAutoThreshold("Moments dark no-reset");
+}
+run("Convert to Mask", "method=Moments background=Dark black list");
+run("Analyze Particles...", "size=20-Infinity show=Masks include stack");
+selectWindow("Mask of C1-ExperimentStack");
+//run("Invert", "stack");
+run("Distance Map", "stack");
+rename("DistanceMap");
+
+//Processing Hoechst Fluorescence channel to detect nuclei 
+selectWindow("C2-ExperimentStack");
+run("Gaussian Blur...", "sigma=3 stack");
+if (T==true) {
+setAutoThreshold("Moments dark no-reset stack");
+} else {
+setAutoThreshold("Moments dark no-reset");
+}
+run("Convert to Mask", "method=Default background=Dark black");
+run("Watershed", "stack");
+run("Analyze Particles...", "  show=Nothing exclude include add stack");
+RoiManager.associateROIsWithSlices(true);
+close();
+ 
+//Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
+print("Start classification of Nuclei");
+selectWindow("DistanceMap");
+roiManager("measure");
+
+for (u = 1; u <= line; u++) {
+	positive=0;
+	negative=0;
+	n = roiManager("count");
+	for (x = 0; x < n; x++) {
+   	 roiManager("select", x);
+   	 RoiName=Roi.getName;
+   	 RoiSlice=split(RoiName, "-");
+   	 if (RoiSlice[0]==IJ.pad(u, 4)) {
+   	 	m=getResult("Min", x);
+   	 	if (m <= (distance/pixelWidth)) {
+    	positive=positive+1;	
+    	RoiManager.setGroup(1);
+   		 }
+   		 else{
+    			negative=negative+1;
+    			RoiManager.setGroup(2);	
+    		}
+   	 }
+	}
+   	selectWindow("Summary_Total");
+   	Table.set("Index", u-1, u);
+	Table.set("Plate Name", u-1, plate[u-1]);
+	Table.set("Plate well", u-1, well[u-1]);
+	Table.set("Position number", u-1, position[u-1]);
+	Table.set("Positive nuclei", u-1, positive);
+	Table.set("Negative nuclei", u-1, negative);
+	Table.set("% Pos", u-1, positive/(positive+negative)*100);
+	Table.update;
+   	}
+
+print("Classification of nuclei finished");
+//SavingRoiSet
+roiManager("save", output + File.separator + "ROIS" + File.separator + experiment + "ROI_Set.zip");
+
+//Creating Control Previews
+selectWindow("C3-ExperimentStack");
+run("Enhance Contrast", "saturated=0.35");
+roiManager("Show All");
+run("Flatten", "stack");
+if (T==true) {
+saveAs("Tiff", output + File.separator + "Results\\" + experiment + distance + "µm_VisualControl_Stack.tif");
+} else {
+saveAs("Tiff", output + File.separator + "Results\\" + experiment + distance + "µm_VisualControl.tif");
+}
+roiManager("Deselect");
+roiManager("Delete");
+close("*");
 
 //save Results as .csv-file and clean up
 selectWindow("Summary_Total");
-saveAs("Results", output + "\\Results\\Results_" + distance + "µm.csv");
-close("*");
+if (T==true) {
+saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance + "µm_stack.csv");
+} else {
+saveAs("Results", output + "\\Results\\" + experiment + "_Results_" + distance + "µm.csv");
+}
 print("Batch processing completed");
+time2=getTime();
+print("Processing took " + (time2-time1)/1000 + " seconds");
 
 //End of Macro
 
@@ -57,12 +170,13 @@ function processFolder(input) {
 			processFolder(input + File.separator + list[i]);
 		if(endsWith(list[i], ".czi"))
 			processFile(input, output, list[i]);
+			nrPlates=nrPlates+1;
 	}
 }
 
 //function to open and process Images  
 function processFile(input, output, file) {
-//BioFormat extension to find the number of positions in a file and detect the Well/position Number
+//BioFormat extension to find the number of positions in a file
 Ext.setId(input + File.separator + list[i]);
 Ext.getSeriesCount(seriesCount);
 
@@ -71,78 +185,23 @@ Ext.getSeriesCount(seriesCount);
 for (series = 1; series <= seriesCount; series++) {
 //Detect Well Postion and Position number in .CZI file metadata
 SeriesName=IJ.pad(series, 2);
+plate[line]=list[i];
 
 Ext.getMetadataValue("Information|Image|S|Scene|ArrayName #" + SeriesName, Well);
+well[line]=Well;
 Ext.getMetadataValue("Information|Image|S|Scene|Name #" + SeriesName, number);
+position[line]=number;
 
 run("Bio-Formats Importer", "open=[" + input + File.separator + list[i] + "] color_mode=Default view=Hyperstack stack_order=XYCZT series_"+series);
 title=getTitle();
-getPixelSize(unit, pixelWidth, pixelHeight);
 
-//Splitting channels
-run("Split Channels");
-close("C3-" + title);
-
-//Processing LacZ Fluorescence channel to detect LacZ patches
-selectWindow("C1-" + title);
-run("Subtract Background...", "rolling=100");
-run("Gaussian Blur...", "sigma=3");
-setAutoThreshold("Intermodes dark");
-run("Convert to Mask");
-run("Analyze Particles...", "size=20-Infinity show=Masks include");
-run("Invert");
-run("Chamfer Distance Map", "distances=[Quasi-Euclidean (1,1.41)] output=[32 bits] normalize");
-rename("DistanceMap");
-
-//Processing Hoechst Fluorescence channel to detect nuclei 
-selectWindow("C2-" + title);
-run("Gaussian Blur...", "sigma=3");
-setAutoThreshold("Default dark");
-run("Convert to Mask");
-run("Analyze Particles...", "  show=Nothing exclude include add");
-close();
- 
-//Measuring distance of each Nucleus according to detected LacZ patches and assigning it to groups 1 (positive) or 2 (negative) --> internal counting
-selectWindow("DistanceMap");
-roiManager("deselect");
-roiManager("measure");
-positive=0;
-negative=0;
-n = roiManager('count');
-for (a = 0; a < n; a++) {
-    roiManager('select', a);
-    m=getResult("Min", a);
-    if (m <= (distance/pixelWidth)) {
-    	positive=positive+1;	
-    	RoiManager.setGroup(1);
-    }
-    else{
-    	negative=negative+1;
-    	RoiManager.setGroup(2);	
-    }
-  
-}
-  run("Clear Results");
-//creating entry to results table - one line per position
-
-selectWindow("Summary_Total");
-Table.set("Plate Name", line, list[i]);
-Table.set("Plate well", line, Well);
-Table.set("Position number", line, number);
-Table.set("Positive nuclei", line, positive);
-Table.set("Negative nuclei", line, negative);
-Table.set("% Pos", line, positive/(positive+negative)*100);
-Table.update;
-line=line+1;
-
-roiManager("save", output + File.separator + "ROIS" + File.separator + list[i]+"_"+SeriesName+".zip");
-roiManager("Deselect");
-roiManager("Delete");
-close("*");
-}
-//cleaning up workspace for next series
-
+if (line==0){
+	rename("ExperimentStack");
+	line=line+1;
+} else {
+	run("Concatenate...", " title=ExperimentStack open image1=ExperimentStack image2=[" + title + "]");
+	line=line+1;
 }
 
-
-
+}
+}
